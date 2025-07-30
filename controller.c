@@ -10,7 +10,7 @@
 //Hashmap
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(key_size, 10);
+    __uint(key_size, 10); //strlen("child_pid") + 1
     __uint(value_size, 4);
     __uint(max_entries, 256 * 1024);
 } pid_hashmap SEC(".maps");
@@ -69,6 +69,7 @@ int detect_syscall_exit(struct trace_event_raw_sys_exit* ctx) {
     pid_t pid, target_pid;
 
     if (value != NULL) {
+        //We only want to trace the syscalls of the process with the pid in the map
         pid = bpf_get_current_pid_tgid() & 0xffffffff;
         target_pid = *(pid_t*) value;
 

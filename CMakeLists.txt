@@ -25,9 +25,9 @@ add_custom_command(
 
 add_custom_target(bpf_objects ALL DEPENDS ${BPF_OBJECT})
 
-add_executable(etrace
-        loader.c)
+add_executable(etrace loader.c)
 
+target_compile_options(etrace PRIVATE -O2 -g -Wall)
 
 # Link to libbpf if needed (remove if not using)
 find_library(LIBBPF_LIBRARY bpf REQUIRED)
@@ -35,3 +35,10 @@ target_link_libraries(etrace ${LIBBPF_LIBRARY})
 
 # Ensure the BPF object is built before userspace
 add_dependencies(etrace bpf_objects)
+
+add_custom_command(TARGET etrace POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy ${BPF_OBJECT} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/controller.o
+        COMMENT "Copying controller.o to runtime directory"
+)
+
+add_executable(test test.c)
