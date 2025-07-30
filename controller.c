@@ -5,46 +5,7 @@
 #include "vmlinux.h" //bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_core_read.h>
-#include <sys/syscall.h>
 #include "controller.h"
-
-const default_syscall_info syscalls[MAX_SYSCALL_NUM] = {
-    [SYS_clone] = {"clone", 5},
-    [SYS_brk] = {"brk", 1},
-    [SYS_close] = {"close", 1},
-    [SYS_exit] = {"exit", 1},
-    [SYS_exit_group] = {"exit_group", 1},
-    [SYS_set_tid_address] = {"set_tid_address", 1},
-    [SYS_set_robust_list] = {"set_robust_list", 1},
-    [SYS_faccessat] = {"faccessat", 3},
-    [SYS_kill] = {"kill", 2},
-    [SYS_listen] = {"listen", 2},
-    [SYS_munmap] = {"sys_munmap", 2},
-    [SYS_openat] = {"openat", 4},
-    [SYS_newfstatat] = {"newfstatat", 4},
-    [SYS_fstat] = {"fstat", 2},
-    [SYS_accept] = {"accept", 3},
-    [SYS_connect] = {"connect", 3},
-    [SYS_execve] = {"execve", 3},
-    [SYS_ioctl] = {"ioctl", 3},
-    [SYS_getrandom] = {"getrandom", 3},
-    [SYS_lseek] = {"lseek", 3},
-    [SYS_ppoll] = {"poll", 5},
-    [SYS_read] = {"read", 3},
-    [SYS_write] = {"write", 3},
-    [SYS_mprotect] = {"mprotect", 3},
-    [SYS_openat] = {"openat", 3},
-    [SYS_socket] = {"socket", 3},
-    [SYS_newfstatat] = {"newfstatat", 4},
-    [SYS_pread64] = {"pread64", 4},
-    [SYS_prlimit64] = {"prlimit64", 4},
-    [SYS_rseq] = {"rseq", 4},
-    [SYS_sendfile] = {"sendfile", 4},
-    [SYS_socketpair] = {"socketpair", 4},
-    [SYS_mmap] = {"mmap", 6},
-    [SYS_recvfrom] = {"recvfrom", 6},
-    [SYS_sendto] = {"sendto", 6},
-};
 
 //Hashmap
 struct {
@@ -64,7 +25,7 @@ struct {
 
 SEC("tracepoint/raw_syscalls/sys_enter")
 int detect_syscall_enter(struct trace_event_raw_sys_enter* ctx) {
-    long syscall_num = ctx->id;
+    const long syscall_num = ctx->id;
     const char* key = "child_pid";
     int target_pid;
 
@@ -101,4 +62,29 @@ int detect_syscall_enter(struct trace_event_raw_sys_enter* ctx) {
     return 0;
 }
 
+SEC("tracepoint/raw_syscalls/sys_exit")
+int detect_syscall_exit(struct trace_event_raw_sys_exit* ctx) {
+    const char* key = "child_pid";
+    void* value = bpf_map_lookup_elem(&pid_hashmap, key);
+    pid_t pid, target_pid;
 
+    if (value != NULL) {
+        pid = bpf_get_current_pid_tgid() & 0xffffffff;
+        target_pid = *(pid_t*) value;
+
+        if (pid == target_pid) {
+            inner_syscall_info *info = bpf_ringbuf_reserve(&syscall_info_buffer, sizeof(inner_syscall_info), 0);
+            if (!info) {
+                bpf_printk("bpf_ringbuf_reserve failed\n");
+                return 1;
+            }
+
+            info->mode = SYS_EXIT;
+            info->ret_val = ctx->ret;
+            bpf_ringbuf_submit(info, 0);
+        }
+    }
+    return 0;
+}
+
+char LICENSE[] SEC("license") = "GPL";
