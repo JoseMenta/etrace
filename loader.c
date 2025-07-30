@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
             fatal_error("Could not open /dev/null");
         }
         dup2(fd, STDOUT_FILENO);
-        sleep(2); //Wait for parent tracer
+        sleep(1); //Wait for parent tracer
 
         execve(program, &argv[1], environ);
         //If execve failed, return error
@@ -128,6 +128,7 @@ int main(int argc, char **argv) {
         }
         sleep(1);
     }
+    printf("\n");
     return 0;
 }
 

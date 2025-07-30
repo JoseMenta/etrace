@@ -30,7 +30,6 @@ int detect_syscall_enter(struct trace_event_raw_sys_enter* ctx) {
     int target_pid;
 
     void* value = bpf_map_lookup_elem(&pid_hashmap, key);
-    void* args[MAX_ARGS] = {0};
 
     if (value != NULL) {
         target_pid = *(int*) value;
