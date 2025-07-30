@@ -7,6 +7,9 @@
 #include <bpf/bpf_core_read.h>
 #include "controller.h"
 
+
+#define MIN(a,b) (((a) < (b)) ? (a) : (b))
+
 //Hashmap
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
@@ -22,21 +25,93 @@ struct {
 } syscall_info_buffer SEC(".maps");
 
 
+typedef void (*reader_type)(inner_syscall_info* info, struct trace_event_raw_sys_enter* ctx, const int id);
+
+int read_for_sys_write(inner_syscall_info* info, struct trace_event_raw_sys_enter* ctx, const int id) {
+    info->args[0].type = VAL_UINT;
+    info->args[0].uint_val =  BPF_CORE_READ(ctx, args[0]);
+
+    info->args[2].type = VAL_SIZE_T;
+    info->args[2].size_t_val =  BPF_CORE_READ(ctx, args[2]);
+    const size_t count = info->args[2].size_t_val;
+
+    info->args[1].type = VAL_STR;
+    bpf_probe_read_user_str(info->args[1].str_val, MIN(count, MAX_STRING_LENGTH), (void *) BPF_CORE_READ(ctx, args[1]));
+
+    return 0;
+}
+
+//With designated initializers, the rest of the elements are zero (null)
+//Add any reader for a custom method to read the arguments for a syscall
+//Do not use now because function pointers are not supported
+// reader_type readers[MAX_SYSCALL_NUM] = {
+//     [SYS_write] = read_for_sys_write
+// };
+
+
+int read_standard(inner_syscall_info* info, struct trace_event_raw_sys_enter* ctx, const int id) {
+    for (int i = 0; i < MAX_ARGS ; i++) {
+        if (i < syscalls[id].num_args) {
+            switch (syscalls[id].types[i]) {
+            case VAL_SIZE_T:
+                info->args[i].type = VAL_SIZE_T;
+                info->args[i].size_t_val = BPF_CORE_READ(ctx, args[i]);
+                break;
+            case VAL_LONG:
+                info->args[i].type = VAL_LONG;
+                info->args[i].long_val = (long) BPF_CORE_READ(ctx, args[i]);
+                break;
+            case VAL_INT:
+                info->args[i].type = VAL_INT;
+                info->args[i].int_val = (int) BPF_CORE_READ(ctx, args[i]);
+                break;
+            case VAL_STR:
+                info->args[i].type = VAL_STR;
+                bpf_probe_read_user_str(info->args[i].str_val, MAX_STRING_LENGTH, (void *) BPF_CORE_READ(ctx, args[i]));
+                break;
+            case VAL_UINT:
+                info->args[i].type = VAL_UINT;
+                info->args[i].uint_val = (unsigned int) BPF_CORE_READ(ctx, args[i]);
+                break;
+            case VAL_ULONG:
+                info->args[i].type = VAL_ULONG;
+                info->args[i].ulong_val = BPF_CORE_READ(ctx, args[i]);
+                break;
+            default: //VAL_PTR
+                info->args[i].type = VAL_PTR;
+                info->args[i].ptr_val = (void *) BPF_CORE_READ(ctx, args[i]);
+                break;
+            }
+        }
+    }
+    return 0;
+}
+
+void read_args(inner_syscall_info* info, struct trace_event_raw_sys_enter* ctx, const int id) {
+    //Add other custom readers here
+    switch (id) {
+    case SYS_write:
+        read_for_sys_write(info, ctx, id);
+        break;
+    default:
+        read_standard(info, ctx, id);
+        break;
+    }
+}
 
 SEC("tracepoint/raw_syscalls/sys_enter")
 int detect_syscall_enter(struct trace_event_raw_sys_enter* ctx) {
     const long syscall_num = ctx->id;
     const char* key = "child_pid";
-    int target_pid;
 
     void* value = bpf_map_lookup_elem(&pid_hashmap, key);
 
     if (value != NULL) {
-        target_pid = *(int*) value;
+        const int target_pid = *(int*)value;
         //pid of the process that executed the syscall
-        pid_t pid = bpf_get_current_pid_tgid() & 0xffffffff;
+        const pid_t pid = bpf_get_current_pid_tgid() & 0xffffffff;
         if (pid == target_pid && syscall_num >= 0 && syscall_num < MAX_SYSCALL_NUM) {
-            int idx = syscall_num;
+            const int idx = syscall_num;
             inner_syscall_info* info = bpf_ringbuf_reserve(&syscall_info_buffer, sizeof(inner_syscall_info), 0);
             if (!info) {
                 bpf_printk("bpf_ringbuf_reserve failed\n");
@@ -45,10 +120,10 @@ int detect_syscall_enter(struct trace_event_raw_sys_enter* ctx) {
 
             //copy syscall name into info->name
             bpf_probe_read_kernel_str(info->name, sizeof(syscalls[syscall_num].name), syscalls[syscall_num].name);
-            //copy args
-            for (int i = 0;  i < MAX_ARGS; i++) {
-                info->args[i] = (void*) BPF_CORE_READ(ctx, args[i]);
-            }
+
+
+            read_args(info, ctx, idx);
+
             info->num_args = syscalls[syscall_num].num_args;
             info->syscall_num = syscall_num;
             info->mode = SYS_ENTER;
@@ -65,12 +140,11 @@ SEC("tracepoint/raw_syscalls/sys_exit")
 int detect_syscall_exit(struct trace_event_raw_sys_exit* ctx) {
     const char* key = "child_pid";
     void* value = bpf_map_lookup_elem(&pid_hashmap, key);
-    pid_t pid, target_pid;
 
     if (value != NULL) {
         //We only want to trace the syscalls of the process with the pid in the map
-        pid = bpf_get_current_pid_tgid() & 0xffffffff;
-        target_pid = *(pid_t*) value;
+        const pid_t pid = bpf_get_current_pid_tgid() & 0xffffffff;
+        const pid_t target_pid = *(pid_t*)value;
 
         if (pid == target_pid) {
             inner_syscall_info *info = bpf_ringbuf_reserve(&syscall_info_buffer, sizeof(inner_syscall_info), 0);

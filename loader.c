@@ -18,6 +18,55 @@ void fatal_error(const char *msg) {
 
 bool initialized = false;
 
+static void print_escaped(const char* str) {
+    for (; *str; str++) {
+        switch (*str) {
+        case '\n': printf("\\n"); break;
+        case '\t': printf("\\t"); break;
+        case '\r': printf("\\r"); break;
+        case '\b': printf("\\b"); break;
+        case '\f': printf("\\f"); break;
+        case '\\': printf("\\\\"); break;
+        case '\"': printf("\\\""); break;
+        case '\a': printf("\\a"); break;
+        case '\v': printf("\\v"); break;
+        default:
+            if ((unsigned char)*str < 0x20 || (unsigned char)*str > 0x7E) {
+                // Print non-printable characters as \xHH
+                printf("\\x%02x", (unsigned char)*str);
+            } else {
+                putchar(*str);
+            }
+        }
+    }
+    putchar('\n');
+}
+
+static void print_arg(arg_val* val) {
+    switch (val->type) {
+    case VAL_SIZE_T:
+        printf("%lu,", val->size_t_val);
+        break;
+    case VAL_LONG:
+        printf("%ld", val->long_val);
+        break;
+    case VAL_INT:
+        printf("%d", val->int_val);
+        break;
+    case VAL_STR:
+        print_escaped(val->str_val);
+        break;
+    case VAL_UINT:
+        printf("%u", val->uint_val);
+        break;
+    case VAL_ULONG:
+        printf("%lu", val->ulong_val);
+        break;
+    default:
+        printf("%p", val->ptr_val);
+    }
+}
+
 static int log_syscall(void* ctx, void* data, size_t len) {
 
     inner_syscall_info* info = data;
@@ -30,7 +79,7 @@ static int log_syscall(void* ctx, void* data, size_t len) {
         printf("%s(", info->name);
 
         for (int i = 0; i < info->num_args; i++) {
-            printf("%p,", info->args[i]);
+            print_arg(&info->args[i]);
         }
         printf("\b) = ");
     }else if (info->mode == SYS_EXIT && initialized){
