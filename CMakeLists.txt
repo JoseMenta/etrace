@@ -3,5 +3,6 @@ project(etrace C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_executable(etrace main.c
-        controller.h)
+add_executable(etrace
+        loader.c
+        controller.c)
