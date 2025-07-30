@@ -19,6 +19,8 @@ void fatal_error(const char *msg) {
 bool initialized = false;
 
 static void print_escaped(const char* str) {
+    putchar('\"');
+    printf("%lu", strlen(str));
     for (; *str; str++) {
         switch (*str) {
         case '\n': printf("\\n"); break;
@@ -39,7 +41,8 @@ static void print_escaped(const char* str) {
             }
         }
     }
-    putchar('\n');
+    putchar('\"');
+    putchar(',');
 }
 
 static void print_arg(arg_val* val) {
@@ -48,22 +51,22 @@ static void print_arg(arg_val* val) {
         printf("%lu,", val->size_t_val);
         break;
     case VAL_LONG:
-        printf("%ld", val->long_val);
+        printf("%ld,", val->long_val);
         break;
     case VAL_INT:
-        printf("%d", val->int_val);
+        printf("%d,", val->int_val);
         break;
     case VAL_STR:
         print_escaped(val->str_val);
         break;
     case VAL_UINT:
-        printf("%u", val->uint_val);
+        printf("%u,", val->uint_val);
         break;
     case VAL_ULONG:
-        printf("%lu", val->ulong_val);
+        printf("%lu,", val->ulong_val);
         break;
     default:
-        printf("%p", val->ptr_val);
+        printf("%p,", val->ptr_val);
     }
 }
 
