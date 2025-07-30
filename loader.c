@@ -20,7 +20,6 @@ bool initialized = false;
 
 static void print_escaped(const char* str) {
     putchar('\"');
-    printf("%lu", strlen(str));
     for (; *str; str++) {
         switch (*str) {
         case '\n': printf("\\n"); break;
@@ -66,7 +65,11 @@ static void print_arg(arg_val* val) {
         printf("%lu,", val->ulong_val);
         break;
     default:
-        printf("%p,", val->ptr_val);
+        if (val->ptr_val == NULL) {
+            printf("NULL,");
+        }else {
+            printf("%p,", val->ptr_val);
+        }
     }
 }
 
@@ -87,7 +90,7 @@ static int log_syscall(void* ctx, void* data, size_t len) {
         printf("\b) = ");
     }else if (info->mode == SYS_EXIT && initialized){
         //Print hex return value
-        printf("0x%lx\n", info->ret_val);
+        printf("%lu\n", info->ret_val);
     }
 
     return 0;
