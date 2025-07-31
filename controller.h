@@ -52,12 +52,12 @@ typedef struct {
         struct {
             char name[NAME_MAX_LENGTH];
             int num_args;
-            long syscall_num;
             arg_val args[MAX_ARGS];
         };
         //For SYS_EXIT
         long ret_val;
     };
+    long syscall_num;
     event_mode mode;
 } inner_syscall_info;
 
@@ -75,7 +75,7 @@ typedef struct {
 
 const default_syscall_info syscalls[MAX_SYSCALL_NUM] = {
     [SYS_clone] = {"clone", 5, {VAL_ULONG, VAL_ULONG, VAL_PTR, VAL_PTR, VAL_ULONG}, VAL_INT},
-    [SYS_brk] = {"brk", 1, {VAL_ULONG}, VAL_INT},
+    [SYS_brk] = {"brk", 1, {VAL_PTR}, VAL_PTR},
     [SYS_close] = {"close", 1, {VAL_UINT}, VAL_INT},
     [SYS_exit] = {"exit", 1, {VAL_INT}, VAL_NONE},
     [SYS_exit_group] = {"exit_group", 1, {VAL_INT}, VAL_NONE},
@@ -84,7 +84,7 @@ const default_syscall_info syscalls[MAX_SYSCALL_NUM] = {
     [SYS_faccessat] = {"faccessat", 3, {VAL_INT, VAL_STR, VAL_INT}, VAL_INT},
     [SYS_kill] = {"kill", 2, {VAL_INT, VAL_INT}, VAL_INT},
     [SYS_listen] = {"listen", 2, {VAL_INT, VAL_INT}, VAL_INT},
-    [SYS_munmap] = {"sys_munmap", 2, {VAL_PTR, VAL_SIZE_T}, VAL_INT}, //see first is ulong
+    [SYS_munmap] = {"munmap", 2, {VAL_PTR, VAL_SIZE_T}, VAL_INT}, //see first is ulong
     [SYS_openat] = {"openat", 4, {VAL_INT, VAL_STR, VAL_INT, VAL_INT}, VAL_INT}, //see umode_t
     [SYS_newfstatat] = {"newfstatat", 4, {VAL_INT, VAL_STR, VAL_PTR, VAL_INT}, VAL_INT},
     [SYS_fstat] = {"fstat", 2, {VAL_UINT, VAL_PTR}, VAL_INT},
@@ -103,9 +103,10 @@ const default_syscall_info syscalls[MAX_SYSCALL_NUM] = {
     [SYS_prlimit64] = {"prlimit64", 4, {VAL_INT, VAL_UINT, VAL_PTR, VAL_PTR}, VAL_INT},
     [SYS_sendfile] = {"sendfile", 4, {VAL_INT, VAL_INT, VAL_PTR, VAL_SIZE_T}, VAL_SIZE_T},
     [SYS_socketpair] = {"socketpair", 4, {VAL_INT, VAL_INT, VAL_INT, VAL_PTR}, VAL_INT},
-    [SYS_mmap] = {"mmap", 6, {VAL_PTR, VAL_PTR, VAL_PTR, VAL_PTR, VAL_PTR, VAL_PTR}, VAL_NONE},
+    [SYS_mmap] = {"mmap", 6, {VAL_PTR, VAL_PTR, VAL_PTR, VAL_PTR, VAL_PTR, VAL_PTR}, VAL_PTR},
     [SYS_recvfrom] = {"recvfrom", 6, {VAL_INT, VAL_PTR, VAL_SIZE_T, VAL_UINT, VAL_PTR, VAL_INT}, VAL_SIZE_T},
     [SYS_sendto] = {"sendto", 6, {VAL_INT, VAL_PTR, VAL_SIZE_T, VAL_UINT, VAL_PTR, VAL_INT}, VAL_SIZE_T},
+    [SYS_rseq] = {"rseq", 4, {VAL_PTR, VAL_PTR, VAL_INT, VAL_PTR}, VAL_INT}
 };
 
 #endif //CONTROLLER_H

@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <ctype.h>
 
 extern char **environ; // Use parent's environment
 
@@ -32,7 +33,7 @@ static void print_escaped(const char* str) {
         case '\a': printf("\\a"); break;
         case '\v': printf("\\v"); break;
         default:
-            if ((unsigned char)*str < 0x20 || (unsigned char)*str > 0x7E) {
+            if (!isprint(*str)) {
                 // Print non-printable characters as \xHH
                 printf("\\x%02x", (unsigned char)*str);
             } else {
@@ -73,6 +74,16 @@ static void print_arg(arg_val* val) {
     }
 }
 
+static void print_ret(const long val, const long syscall_num) {
+    switch (syscalls[syscall_num].ret_type) {
+    case VAL_PTR:
+        printf("%p\n", (void*) val);
+        break;
+    default:
+        printf("%lu\n", val);
+    }
+}
+
 static int log_syscall(void* ctx, void* data, size_t len) {
 
     inner_syscall_info* info = data;
@@ -90,7 +101,7 @@ static int log_syscall(void* ctx, void* data, size_t len) {
         printf("\b) = ");
     }else if (info->mode == SYS_EXIT && initialized){
         //Print hex return value
-        printf("%lu\n", info->ret_val);
+        print_ret(info->ret_val, info->syscall_num);
     }
 
     return 0;
