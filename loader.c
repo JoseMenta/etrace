@@ -2,7 +2,7 @@
 // Created by Jose Menta on 29/07/2025.
 //
 #include <bpf/libbpf.h>
-#include "controller.h"
+#include "printer.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,127 +17,28 @@ void fatal_error(const char *msg) {
     exit(1);
 }
 
-bool initialized = false;
 
-static void print_escaped(const char* str) {
-    putchar('\"');
-    for (; *str; str++) {
-        switch (*str) {
-        case '\n': printf("\\n"); break;
-        case '\t': printf("\\t"); break;
-        case '\r': printf("\\r"); break;
-        case '\b': printf("\\b"); break;
-        case '\f': printf("\\f"); break;
-        case '\\': printf("\\\\"); break;
-        case '\"': printf("\\\""); break;
-        case '\a': printf("\\a"); break;
-        case '\v': printf("\\v"); break;
-        default:
-            if (!isprint(*str)) {
-                // Print non-printable characters as \xHH
-                printf("\\x%02x", (unsigned char)*str);
-            } else {
-                putchar(*str);
-            }
-        }
+int exec_child(char** argv, const char* program) {
+    //Child
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1) {
+        fatal_error("Could not open /dev/null");
     }
-    putchar('\"');
-    putchar(',');
+    dup2(fd, STDOUT_FILENO);
+    sleep(1); //Wait for parent tracer
+
+    execve(program, &argv[1], environ);
+    //If execve failed, return error
+    return 1;
 }
 
-static void print_arg(arg_val* val) {
-    switch (val->type) {
-    case VAL_SIZE_T:
-        printf("%lu,", val->size_t_val);
-        break;
-    case VAL_LONG:
-        printf("%ld,", val->long_val);
-        break;
-    case VAL_INT:
-        printf("%d,", val->int_val);
-        break;
-    case VAL_STR:
-        print_escaped(val->str_val);
-        break;
-    case VAL_UINT:
-        printf("%u,", val->uint_val);
-        break;
-    case VAL_ULONG:
-        printf("%lu,", val->ulong_val);
-        break;
-    default:
-        if (val->ptr_val == NULL) {
-            printf("NULL,");
-        }else {
-            printf("%p,", val->ptr_val);
-        }
-    }
-}
-
-static void print_ret(const long val, const long syscall_num) {
-    switch (syscalls[syscall_num].ret_type) {
-    case VAL_PTR:
-        printf("%p\n", (void*) val);
-        break;
-    default:
-        printf("%lu\n", val);
-    }
-}
-
-static int log_syscall(void* ctx, void* data, size_t len) {
-
-    inner_syscall_info* info = data;
-    if (!info) {
-        return -1;
-    }
-
-    if (info->mode == SYS_ENTER) {
-        initialized = true;
-        printf("%s(", info->name);
-
-        for (int i = 0; i < info->num_args; i++) {
-            print_arg(&info->args[i]);
-        }
-        printf("\b) = ");
-    }else if (info->mode == SYS_EXIT && initialized){
-        //Print hex return value
-        print_ret(info->ret_val, info->syscall_num);
-    }
-
-    return 0;
-}
-
-int main(int argc, char **argv) {
-    int status;
+int load_ebpf(const pid_t pid) {
     const char* object_name = "controller.o";
     const char* map_name = "pid_hashmap";
     const char* enter_program_name = "detect_syscall_enter";
     const char* exit_program_name = "detect_syscall_exit";
     const char* syscall_info_buffer_name = "syscall_info_buffer";
 
-
-    if (argc < 2) {
-        fatal_error("Usage: ./etrace <path_to_program>");
-    }
-
-    const char* program = argv[1];
-
-    const pid_t pid = fork();
-    if (pid == 0) {
-        //Child
-        int fd = open("/dev/null", O_WRONLY);
-        if (fd == -1) {
-            fatal_error("Could not open /dev/null");
-        }
-        dup2(fd, STDOUT_FILENO);
-        sleep(1); //Wait for parent tracer
-
-        execve(program, &argv[1], environ);
-        //If execve failed, return error
-        return 1;
-    }
-
-    printf("Spawned child process with a PID of %d\n", pid);
     struct bpf_object* obj = bpf_object__open(object_name);
     if (!obj) {
         fatal_error("failed to open the BPF object");
@@ -173,7 +74,25 @@ int main(int argc, char **argv) {
         fatal_error("failed to insert child_pid in pid hashmap");
     }
 
-    const int rbFd = bpf_object__find_map_fd_by_name(obj, syscall_info_buffer_name);
+    return bpf_object__find_map_fd_by_name(obj, syscall_info_buffer_name);
+}
+
+int main(int argc, char **argv) {
+
+    if (argc < 2) {
+        fatal_error("Usage: ./etrace <path_to_program>");
+    }
+
+    const char* program = argv[1];
+
+    const pid_t pid = fork();
+    if (pid == 0) {
+        return exec_child(argv, program);
+    }
+
+    int status;
+
+    const int rbFd = load_ebpf(pid);
 
     //Pass the function to process the incoming data in the buffer
     struct ring_buffer* rBuffer = ring_buffer__new(rbFd, log_syscall, NULL, NULL);

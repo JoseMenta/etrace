@@ -25,7 +25,8 @@ add_custom_command(
 
 add_custom_target(bpf_objects ALL DEPENDS ${BPF_OBJECT})
 
-add_executable(etrace loader.c)
+add_executable(etrace loader.c
+        printer.c)
 
 target_compile_options(etrace PRIVATE -O2 -g -Wall)
 
