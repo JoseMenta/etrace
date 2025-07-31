@@ -11,7 +11,8 @@
 #define MAX_ARGS 6
 #define MAX_SYSCALL_NUM 335
 #define NAME_MAX_LENGTH 32
-//TODO: check why it breaks when using a value higher than 128 
+//Do not use higher values because it breaks the program because of the memory limits of a filter
+//and maybe that prevents all the data from being sent.
 #define MAX_STRING_LENGTH 128
 
 typedef enum {

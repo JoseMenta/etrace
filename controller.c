@@ -62,7 +62,8 @@ int detect_syscall_enter(struct trace_event_raw_sys_enter* ctx) {
                 const size_t count = info->args[2].size_t_val;
 
                 info->args[1].type = VAL_STR;
-                bpf_probe_read_user_str(info->args[1].str_val, MIN(count, MAX_STRING_LENGTH), (void *) BPF_CORE_READ(ctx, args[1]));
+                //count + 1 to include the null termination
+                bpf_probe_read_user_str(info->args[1].str_val, MIN(count + 1, MAX_STRING_LENGTH), (void *) BPF_CORE_READ(ctx, args[1]));
                 break;
             default:
                 // Logic for read_standard
@@ -83,8 +84,30 @@ int detect_syscall_enter(struct trace_event_raw_sys_enter* ctx) {
                         info->args[i].int_val = (int) BPF_CORE_READ(ctx, args[i]);
                         break;
                     case VAL_STR:
+                        // info->args[i].type = VAL_STR;
+                        // bpf_probe_read_user_str(info->args[i].str_val, MAX_STRING_LENGTH, (void *) BPF_CORE_READ(ctx, args[i]));
+                        // break;
+                        //For execve, it may fail to pass the string because the kernel copies the path into its memory
+                        //early. By the time this tracepoint fires, the original userspace location (the one we are trying
+                        //to read) might have been unmapped, freed or become transient, resulting in EFAULT (-14)
                         info->args[i].type = VAL_STR;
-                        bpf_probe_read_user_str(info->args[i].str_val, MAX_STRING_LENGTH, (void *) BPF_CORE_READ(ctx, args[i]));
+                        info->args[i].str_val[0] = '\0'; // Initialize the string buffer
+                        void *str_ptr = (void *) BPF_CORE_READ(ctx, args[i]);
+
+                        // Check for null pointer first
+                        if (!str_ptr) {
+                            char null_ptr_str[] = "<null_ptr>";
+                            bpf_probe_read_kernel_str(info->args[i].str_val, MIN(sizeof(null_ptr_str), MAX_STRING_LENGTH), null_ptr_str);
+                        } else {
+                            // bpf_probe_read_user_str returns strictly positive length on success, negative on error.
+                            int read_len = bpf_probe_read_user_str(info->args[i].str_val, MAX_STRING_LENGTH, str_ptr);
+
+                            if (read_len <= 0) { // Check for failure (negative) or empty string (0)
+                                char err_str[] = "<read_error>";
+                                bpf_probe_read_kernel_str(info->args[i].str_val, MIN(sizeof(err_str), MAX_STRING_LENGTH), err_str);
+                            }
+                            // If read_len > 0, bpf_probe_read_user_str already null-terminated the string.
+                        }
                         break;
                     case VAL_UINT:
                         info->args[i].type = VAL_UINT;
